@@ -256,13 +256,14 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 }
 
 func (r *SPF2IPResolver) lookupIPNetwork() string {
-	if r.ipVersion == ipv4 {
+	switch r.ipVersion {
+	case ipv4:
 		return "ip4"
-	} else if r.ipVersion == ipv6 {
+	case ipv6:
 		return "ip6"
+	default:
+		return "ip" // Fallback, should not happen if ipVersion is correctly set
 	}
-
-	return "ip" // Fallback, should not happen if ipVersion is correctly set
 }
 
 func parseSPFMechanismTargetAndMask(defaultDomain, mechanismValue string) (targetHost, maskSuffix string) {
@@ -323,8 +324,7 @@ func (r *SPF2IPResolver) addIPOrCIDRToSet(value string, targetSet map[string]str
 
 	// Try CIDR first
 	if ip, ipNet, err := net.ParseCIDR(value); err == nil {
-		if (r.ipVersion == ipv4 && ip.To4() != nil) ||
-			(r.ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil) {
+		if (r.ipVersion == ipv4 && ip.To4() != nil) || (r.ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil) {
 			targetSet[ipNet.String()] = struct{}{}
 			return nil
 		}
