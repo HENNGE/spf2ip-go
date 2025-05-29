@@ -21,7 +21,7 @@ This project is a Go remake of the original [SPF2IP (Python) by Nathan Dines](ht
 
 1.  Clone the repository:
     ```bash
-    git clone [https://github.com/HENNGE/spf2ip-go.git](https://github.com/HENNGE/spf2ip-go.git)
+    git clone https://github.com/HENNGE/spf2ip-go.git
     cd spf2ip-go
     ```
     
