@@ -37,7 +37,7 @@ func TestResolve(t *testing.T) {
 		[]string{"v=spf1 ip4:1.2.3.0/28 include:first.included.com include:second.included.com a mx:mx.example.com -all"}, nil,
 	).Times(1)
 	s.netResolver.EXPECT().LookupTXT(gomock.Any(), "first.included.com").Return(
-		[]string{"v=spf1 ip4:5.6.7.8 ip6:2001:db8::1 include:included.again.com -all"}, nil,
+		[]string{"v=spf1 ip4:5.6.7.8 ip6:2001:db8::1 include:nxdomain.included.com -all"}, nil,
 	).Times(1)
 	s.netResolver.EXPECT().LookupTXT(gomock.Any(), "second.included.com").Return(
 		[]string{"v=spf1 include:first.included.com ip4:1.0.0.0/24 -all"}, nil,
@@ -57,7 +57,7 @@ func TestResolve(t *testing.T) {
 	s.netResolver.EXPECT().LookupIP(gomock.Any(), "ip4", "example.com").Return(
 		[]net.IP{net.ParseIP("8.8.8.8")}, nil,
 	).Times(1)
-	s.netResolver.EXPECT().LookupTXT(gomock.Any(), "included.again.com").Return(
+	s.netResolver.EXPECT().LookupTXT(gomock.Any(), "nxdomain.included.com").Return(
 		nil, &net.DNSError{IsNotFound: true}, // Simulating an ignorable DNS error
 	).Times(1)
 
@@ -118,7 +118,7 @@ func TestResolve_AMechanism(t *testing.T) {
 	s := NewSPF2IPTestSuite(t)
 
 	{
-		// Test A mechanism with value
+		// A mechanism with value
 		s.netResolver.EXPECT().LookupTXT(gomock.Any(), "example.com").Return(
 			[]string{"v=spf1 a:test.com -all"}, nil,
 		).Times(1)
@@ -134,7 +134,7 @@ func TestResolve_AMechanism(t *testing.T) {
 	}
 
 	{
-		// Test A mechanism without value
+		// A mechanism without value
 		s.netResolver.EXPECT().LookupTXT(gomock.Any(), "example.com").Return(
 			[]string{"v=spf1 a -all"}, nil,
 		).Times(1)
@@ -156,7 +156,7 @@ func TestResolve_MXMechanism(t *testing.T) {
 	s := NewSPF2IPTestSuite(t)
 
 	{
-		// Test MX mechanism with value
+		// MX mechanism with value
 		s.netResolver.EXPECT().LookupTXT(gomock.Any(), "example.com").Return(
 			[]string{"v=spf1 mx:test.com -all"}, nil,
 		).Times(1)
@@ -181,7 +181,7 @@ func TestResolve_MXMechanism(t *testing.T) {
 	}
 
 	{
-		// Test MX mechanism without value
+		// MX mechanism without value
 		s.netResolver.EXPECT().LookupTXT(gomock.Any(), "example.com").Return(
 			[]string{"v=spf1 mx -all"}, nil,
 		).Times(1)
@@ -304,7 +304,7 @@ func TestResolve_ExceededMaxDepthErr(t *testing.T) {
 		[]string{"v=spf1 include:included0.com -all"}, nil,
 	).Times(1)
 
-	for i := 0; i < maxSPFIncludeDepth; i++ { // excluding the first include
+	for i := range maxSPFIncludeDepth { // excluding the first include
 		s.netResolver.EXPECT().LookupTXT(gomock.Any(), fmt.Sprintf("included%d.com", i)).Return(
 			[]string{fmt.Sprintf("v=spf1 include:included%d.com -all", i+1)}, nil,
 		).Times(1)

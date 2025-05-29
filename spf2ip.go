@@ -92,7 +92,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 
 	// Check for loops in the current resolution path.
 	if _, visited := r.domainsVisitedInCurrentPath[domain]; visited {
-		log.Printf("Warning: Loop detected for domain %s", domain)
+		r.debugLogPrintf("Debug: Loop detected for domain %s", domain)
 		return nil, fmt.Errorf("%w: %s", ErrLoopDetected, domain)
 	}
 
@@ -104,17 +104,15 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 	currentDomainIPs := make(map[string]struct{})
 
 	spfString, err := r.getSPFRecord(ctx, domain)
-	if err != nil {
-		if !errors.Is(err, errIgnorableDNSErr) {
-			log.Printf("Warning: Failed to get SPF record for %s: %v", domain, err)
-			r.resolvedIPsCache[domain] = nil
+	if err != nil && !errors.Is(err, errIgnorableDNSErr) {
+		r.debugLogPrintf("Debug: Failed to get SPF record for %s: %v", domain, err)
+		r.resolvedIPsCache[domain] = nil
 
-			return nil, err
-		}
+		return nil, fmt.Errorf("failed to get SPF record for %s: %w", domain, err)
 	}
 
 	if spfString == "" {
-		log.Printf("No SPF record found for %s, treating as empty", domain)
+		r.debugLogPrintf("Debug: No SPF record found for %s, treating as empty", domain)
 		r.resolvedIPsCache[domain] = currentDomainIPs
 
 		return currentDomainIPs, nil
@@ -209,37 +207,37 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 			}
 
 		case "include":
-			if value != "" {
-				includedIPs, includeErr := r.processDomain(ctx, value, depth+1)
-				if includeErr != nil {
-					return nil, fmt.Errorf("include failed for %s (directive in %s): %w", value, domain, includeErr)
-				} else {
-					for ip := range includedIPs {
-						currentDomainIPs[ip] = struct{}{}
-					}
-				}
-			} else {
-				log.Printf("Warning: 'include' modifier without domain in %s", domain)
+			if value == "" {
+				r.debugLogPrintf("Debug: 'include' modifier without domain in %s", domain)
 				r.resolvedIPsCache[domain] = nil
 
 				return nil, fmt.Errorf("include without domain in %s", domain)
 			}
 
-		case "redirect":
-			if value != "" {
-				r.debugLogPrintf("Debug: Redirecting from %s to %s. Discarding IPs found so far for %s.", domain, value, domain)
-
-				// The result of this domain's processing is now entirely determined by the redirect target.
-				redirectedIPs, redirectErr := r.processDomain(ctx, value, depth+1)
-				r.resolvedIPsCache[domain] = deepCopyMap(redirectedIPs) // Overwrite cache with redirected IPs
-
-				return redirectedIPs, redirectErr
+			includedIPs, includeErr := r.processDomain(ctx, value, depth+1)
+			if includeErr != nil {
+				return nil, fmt.Errorf("include failed for %s (directive in %s): %w", value, domain, includeErr)
 			}
 
-			log.Printf("Warning: 'redirect' modifier without domain in %s", domain)
-			r.resolvedIPsCache[domain] = nil
+			for ip := range includedIPs {
+				currentDomainIPs[ip] = struct{}{}
+			}
 
-			return nil, fmt.Errorf("redirect without domain in %s", domain)
+		case "redirect":
+			if value == "" {
+				r.debugLogPrintf("Debug: 'redirect' modifier without domain in %s", domain)
+				r.resolvedIPsCache[domain] = nil
+
+				return nil, fmt.Errorf("redirect without domain in %s", domain)
+			}
+
+			r.debugLogPrintf("Debug: Redirecting from %s to %s. Discarding IPs found so far for %s.", domain, value, domain)
+
+			// The result of this domain's processing is now entirely determined by the redirect target.
+			redirectedIPs, redirectErr := r.processDomain(ctx, value, depth+1)
+			r.resolvedIPsCache[domain] = deepCopyMap(redirectedIPs) // Overwrite cache with redirected IPs
+
+			return redirectedIPs, redirectErr
 
 		case "exists", "ptr", "all":
 			// These mechanisms don't directly define IPs in the same way, ignore for IP extraction.
@@ -255,6 +253,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 	return currentDomainIPs, nil
 }
 
+// lookupIPNetwork returns the appropriate network type for IP lookups based on the resolver's IP version.
 func (r *SPF2IPResolver) lookupIPNetwork() string {
 	switch r.ipVersion {
 	case ipv4:
@@ -266,6 +265,7 @@ func (r *SPF2IPResolver) lookupIPNetwork() string {
 	}
 }
 
+// parseSPFMechanismTargetAndMask extracts the target host and mask suffix from an SPF mechanism value.
 func parseSPFMechanismTargetAndMask(defaultDomain, mechanismValue string) (targetHost, maskSuffix string) {
 	targetHost = defaultDomain
 	maskSuffix = ""
@@ -313,7 +313,7 @@ func (r *SPF2IPResolver) getSPFRecord(ctx context.Context, domain string) (strin
 		}
 	}
 
-	log.Printf("No record starting with 'v=spf1 ' found for %s", domain)
+	r.debugLogPrintf("Debug: No record starting with 'v=spf1 ' found for %s", domain)
 
 	return "", nil // No SPF record found
 }
@@ -353,7 +353,8 @@ func (r *SPF2IPResolver) addIPOrCIDRToSet(value string, targetSet map[string]str
 	return fmt.Errorf("value '%s' is not a valid IP address or CIDR block", value)
 }
 
-func (r *SPF2IPResolver) debugLogPrintf(format string, args ...interface{}) {
+// debugLogPrintf logs debug messages if debug logging is enabled.
+func (r *SPF2IPResolver) debugLogPrintf(format string, args ...any) {
 	if r.debugLogging {
 		log.Printf(format, args...)
 	}

@@ -42,6 +42,7 @@ func (s cidrSorter) Less(i, j int) bool {
 	return p1 < p2 // Smaller prefix (wider network) comes first
 }
 
+// parseCIDR parses a CIDR notation string and returns the IP, prefix length, and whether it's IPv4.
 func parseCIDR(s string) (ip net.IP, prefix int, isV4 bool) {
 	_, ipNet, err := net.ParseCIDR(s)
 	if err != nil {
