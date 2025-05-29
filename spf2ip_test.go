@@ -367,7 +367,7 @@ func TestParseSPFMechanismTargetAndMask(t *testing.T) {
 		},
 		"Empty mechanism value (fallback to default domain)": {
 			mechanismValue:     "",
-			expectedTargetHost: "default.example.com",
+			expectedTargetHost: defaultDomain,
 			expectedMaskSuffix: "",
 		},
 	} {
