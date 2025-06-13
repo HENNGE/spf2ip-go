@@ -25,14 +25,8 @@ var (
 )
 
 type SPF2IPResolver struct {
-	ipVersion    int
 	netResolver  NetResolver
 	debugLogging bool
-
-	// Map of visited domains in the current path for loop detection: domain -> struct{}
-	domainsVisitedInCurrentPath map[string]struct{}
-	// Map of resolved IPs for each domain: domain -> IPs -> struct{}
-	resolvedIPsCache map[string]map[string]struct{}
 }
 
 //go:generate mockgen -package spf2ip -source spf2ip.go -destination netresolver_mock.go
@@ -54,11 +48,9 @@ func (r *SPF2IPResolver) Resolve(ctx context.Context, domain string, ipVersion i
 		return nil, fmt.Errorf("%w: %d", ErrInvalidIPVersion, ipVersion)
 	}
 
-	r.ipVersion = ipVersion
-	r.domainsVisitedInCurrentPath = make(map[string]struct{})
-	r.resolvedIPsCache = make(map[string]map[string]struct{})
-
-	finalIPs, err := r.processDomain(ctx, domain, 0)
+	finalIPs, err := r.processDomain(
+		ctx, ipVersion, make(map[string]struct{}), make(map[string]map[string]struct{}), domain, 0,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +69,14 @@ func (r *SPF2IPResolver) Resolve(ctx context.Context, domain string, ipVersion i
 	return result, nil
 }
 
-func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth int) (map[string]struct{}, error) {
+func (r *SPF2IPResolver) processDomain(
+	ctx context.Context,
+	ipVersion int,
+	domainsVisitedInCurrentPath map[string]struct{},
+	resolvedIPsCache map[string]map[string]struct{},
+	domain string,
+	depth int,
+) (map[string]struct{}, error) {
 	if depth > maxSPFIncludeDepth {
 		return nil, fmt.Errorf("%w: %s (depth %d)", ErrExceededMaxDepth, domain, depth)
 	}
@@ -85,19 +84,19 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 	domain = strings.ToLower(strings.TrimSpace(domain))
 
 	// Check if this domain's SPF is already resolved and cached.
-	if cachedIPs, found := r.resolvedIPsCache[domain]; found {
+	if cachedIPs, found := resolvedIPsCache[domain]; found {
 		r.debugLogPrintf("Debug: Using cached result for domain: %s", domain)
 		return deepCopyMap(cachedIPs), nil
 	}
 
 	// Check for loops in the current resolution path.
-	if _, visited := r.domainsVisitedInCurrentPath[domain]; visited {
+	if _, visited := domainsVisitedInCurrentPath[domain]; visited {
 		r.debugLogPrintf("Debug: Loop detected for domain %s", domain)
 		return nil, fmt.Errorf("%w: %s", ErrLoopDetected, domain)
 	}
 
-	r.domainsVisitedInCurrentPath[domain] = struct{}{}
-	defer delete(r.domainsVisitedInCurrentPath, domain)
+	domainsVisitedInCurrentPath[domain] = struct{}{}
+	defer delete(domainsVisitedInCurrentPath, domain)
 
 	r.debugLogPrintf("Debug: Processing domain: %s (depth %d)", domain, depth)
 
@@ -106,14 +105,14 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 	spfString, err := r.getSPFRecord(ctx, domain)
 	if err != nil && !errors.Is(err, errIgnorableDNSErr) {
 		r.debugLogPrintf("Debug: Failed to get SPF record for %s: %v", domain, err)
-		r.resolvedIPsCache[domain] = nil
+		resolvedIPsCache[domain] = nil
 
 		return nil, fmt.Errorf("spf2ip: failed to get SPF record for %s: %w", domain, err)
 	}
 
 	if spfString == "" {
 		r.debugLogPrintf("Debug: No SPF record found for %s, treating as empty", domain)
-		r.resolvedIPsCache[domain] = currentDomainIPs
+		resolvedIPsCache[domain] = currentDomainIPs
 
 		return currentDomainIPs, nil
 	}
@@ -140,15 +139,15 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 
 		switch mechanism {
 		case "ip4":
-			if r.ipVersion == ipv4 {
-				if err := r.addIPOrCIDRToSet(value, currentDomainIPs); err != nil {
+			if ipVersion == ipv4 {
+				if err := r.addIPOrCIDRToSet(ipVersion, value, currentDomainIPs); err != nil {
 					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for ip4 mechanism in %s: %w", domain, err)
 				}
 			}
 
 		case "ip6":
-			if r.ipVersion == ipv6 {
-				if err := r.addIPOrCIDRToSet(value, currentDomainIPs); err != nil {
+			if ipVersion == ipv6 {
+				if err := r.addIPOrCIDRToSet(ipVersion, value, currentDomainIPs); err != nil {
 					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for ip6 mechanism in %s: %w", domain, err)
 				}
 			}
@@ -156,7 +155,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		case "a":
 			targetHost, maskSuffix := parseSPFMechanismTargetAndMask(domain, value)
 
-			ips, err := r.netResolver.LookupIP(ctx, r.lookupIPNetwork(), targetHost)
+			ips, err := r.netResolver.LookupIP(ctx, lookupIPNetwork(ipVersion), targetHost)
 			if err != nil {
 				if isDNSErrIgnorable(err) {
 					r.debugLogPrintf("Debug: Ignorable DNS error for A/AAAA lookup of %s (directive in %s): %v", targetHost, domain, err)
@@ -167,7 +166,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 			}
 
 			for _, ip := range ips {
-				if err := r.addIPOrCIDRToSet(ip.String()+maskSuffix, currentDomainIPs); err != nil {
+				if err := r.addIPOrCIDRToSet(ipVersion, ip.String()+maskSuffix, currentDomainIPs); err != nil {
 					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for A mechanism in %s: %w", domain, err)
 				}
 			}
@@ -188,7 +187,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 			for _, mx := range mxs {
 				mxHost := strings.TrimSuffix(mx.Host, ".")
 
-				ips, err := r.netResolver.LookupIP(ctx, r.lookupIPNetwork(), mxHost)
+				ips, err := r.netResolver.LookupIP(ctx, lookupIPNetwork(ipVersion), mxHost)
 				if err != nil {
 					if !isDNSErrIgnorable(err) {
 						return nil, fmt.Errorf("A/AAAA lookup failed for MX host %s (directive in %s): %w", mxHost, domain, err)
@@ -200,7 +199,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 				}
 
 				for _, ip := range ips {
-					if err := r.addIPOrCIDRToSet(ip.String()+maskSuffix, currentDomainIPs); err != nil {
+					if err := r.addIPOrCIDRToSet(ipVersion, ip.String()+maskSuffix, currentDomainIPs); err != nil {
 						return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for MX mechanism in %s: %w", domain, err)
 					}
 				}
@@ -209,12 +208,12 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		case "include":
 			if value == "" {
 				r.debugLogPrintf("Debug: 'include' modifier without domain in %s", domain)
-				r.resolvedIPsCache[domain] = nil
+				resolvedIPsCache[domain] = nil
 
 				return nil, fmt.Errorf("spf2ip: include without domain in %s", domain)
 			}
 
-			includedIPs, includeErr := r.processDomain(ctx, value, depth+1)
+			includedIPs, includeErr := r.processDomain(ctx, ipVersion, domainsVisitedInCurrentPath, resolvedIPsCache, value, depth+1)
 			if includeErr != nil {
 				return nil, fmt.Errorf("spf2ip: include failed for %s (directive in %s): %w", value, domain, includeErr)
 			}
@@ -226,7 +225,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		case "redirect":
 			if value == "" {
 				r.debugLogPrintf("Debug: 'redirect' modifier without domain in %s", domain)
-				r.resolvedIPsCache[domain] = nil
+				resolvedIPsCache[domain] = nil
 
 				return nil, fmt.Errorf("spf2ip: redirect without domain in %s", domain)
 			}
@@ -234,8 +233,8 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 			r.debugLogPrintf("Debug: Redirecting from %s to %s. Discarding IPs found so far for %s.", domain, value, domain)
 
 			// The result of this domain's processing is now entirely determined by the redirect target.
-			redirectedIPs, redirectErr := r.processDomain(ctx, value, depth+1)
-			r.resolvedIPsCache[domain] = deepCopyMap(redirectedIPs) // Overwrite cache with redirected IPs
+			redirectedIPs, redirectErr := r.processDomain(ctx, ipVersion, domainsVisitedInCurrentPath, resolvedIPsCache, value, depth+1)
+			resolvedIPsCache[domain] = deepCopyMap(redirectedIPs) // Overwrite cache with redirected IPs
 
 			return redirectedIPs, redirectErr
 
@@ -248,14 +247,14 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		}
 	}
 
-	r.resolvedIPsCache[domain] = deepCopyMap(currentDomainIPs)
+	resolvedIPsCache[domain] = deepCopyMap(currentDomainIPs)
 
 	return currentDomainIPs, nil
 }
 
 // lookupIPNetwork returns the appropriate network type for IP lookups based on the resolver's IP version.
-func (r *SPF2IPResolver) lookupIPNetwork() string {
-	switch r.ipVersion {
+func lookupIPNetwork(ipVersion int) string {
+	switch ipVersion {
 	case ipv4:
 		return "ip4"
 	case ipv6:
@@ -319,35 +318,35 @@ func (r *SPF2IPResolver) getSPFRecord(ctx context.Context, domain string) (strin
 }
 
 // addIPOrCIDRToSet adds an IP or CIDR block to the target set, ensuring that plain IPs are converted to CIDR notation.
-func (r *SPF2IPResolver) addIPOrCIDRToSet(value string, targetSet map[string]struct{}) error {
+func (r *SPF2IPResolver) addIPOrCIDRToSet(ipVersion int, value string, targetSet map[string]struct{}) error {
 	value = strings.TrimSpace(value)
 
 	// Try CIDR first
 	if ip, ipNet, err := net.ParseCIDR(value); err == nil {
-		if (r.ipVersion == ipv4 && ip.To4() != nil) || (r.ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil) {
+		if (ipVersion == ipv4 && ip.To4() != nil) || (ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil) {
 			targetSet[ipNet.String()] = struct{}{}
 			return nil
 		}
 
-		return fmt.Errorf("spf2ip: CIDR '%s' is not of the required IP version (v%d)", value, r.ipVersion)
+		return fmt.Errorf("spf2ip: CIDR '%s' is not of the required IP version (v%d)", value, ipVersion)
 	}
 
 	// Try plain IP
 	ip := net.ParseIP(value)
 	if ip != nil {
-		if r.ipVersion == ipv4 && ip.To4() != nil {
+		if ipVersion == ipv4 && ip.To4() != nil {
 			// Convert IPv4 to CIDR notation
 			targetSet[ip.To4().String()+"/32"] = struct{}{}
 			return nil
 		}
 
-		if r.ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil {
+		if ipVersion == ipv6 && ip.To4() == nil && ip.To16() != nil {
 			// Convert IPv6 to CIDR notation
 			targetSet[ip.String()+"/128"] = struct{}{}
 			return nil
 		}
 
-		return fmt.Errorf("spf2ip: IP address '%s' is not of the required IP version (v%d)", value, r.ipVersion)
+		return fmt.Errorf("spf2ip: IP address '%s' is not of the required IP version (v%d)", value, ipVersion)
 	}
 
 	return fmt.Errorf("spf2ip: value '%s' is not a valid IP address or CIDR block", value)

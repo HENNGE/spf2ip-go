@@ -583,8 +583,7 @@ func TestAddIPOrCIDRToSet(t *testing.T) {
 		t.Run(description, func(t *testing.T) {
 			ipsMap := make(map[string]struct{})
 
-			s.spf2IPResolver.ipVersion = tc.ipVersion
-			err := s.spf2IPResolver.addIPOrCIDRToSet(tc.value, ipsMap)
+			err := s.spf2IPResolver.addIPOrCIDRToSet(tc.ipVersion, tc.value, ipsMap)
 
 			assert.Equal(t, tc.expectErr, err != nil)
 
