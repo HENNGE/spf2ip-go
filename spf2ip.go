@@ -19,9 +19,9 @@ const (
 )
 
 var (
-	ErrInvalidIPVersion = errors.New("invalid IP version specified, must be 4 or 6")
-	ErrLoopDetected     = errors.New("loop detected in SPF resolution")
-	ErrExceededMaxDepth = errors.New("maximum SPF include depth exceeded")
+	ErrInvalidIPVersion = errors.New("spf2ip: invalid IP version specified, must be 4 or 6")
+	ErrLoopDetected     = errors.New("spf2ip: loop detected in SPF resolution")
+	ErrExceededMaxDepth = errors.New("spf2ip: maximum SPF include depth exceeded")
 )
 
 type SPF2IPResolver struct {
@@ -108,7 +108,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		r.debugLogPrintf("Debug: Failed to get SPF record for %s: %v", domain, err)
 		r.resolvedIPsCache[domain] = nil
 
-		return nil, fmt.Errorf("failed to get SPF record for %s: %w", domain, err)
+		return nil, fmt.Errorf("spf2ip: failed to get SPF record for %s: %w", domain, err)
 	}
 
 	if spfString == "" {
@@ -142,14 +142,14 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 		case "ip4":
 			if r.ipVersion == ipv4 {
 				if err := r.addIPOrCIDRToSet(value, currentDomainIPs); err != nil {
-					return nil, fmt.Errorf("failed to add IP/CIDR for ip4 mechanism in %s: %w", domain, err)
+					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for ip4 mechanism in %s: %w", domain, err)
 				}
 			}
 
 		case "ip6":
 			if r.ipVersion == ipv6 {
 				if err := r.addIPOrCIDRToSet(value, currentDomainIPs); err != nil {
-					return nil, fmt.Errorf("failed to add IP/CIDR for ip6 mechanism in %s: %w", domain, err)
+					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for ip6 mechanism in %s: %w", domain, err)
 				}
 			}
 
@@ -168,7 +168,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 
 			for _, ip := range ips {
 				if err := r.addIPOrCIDRToSet(ip.String()+maskSuffix, currentDomainIPs); err != nil {
-					return nil, fmt.Errorf("failed to add IP/CIDR for A mechanism in %s: %w", domain, err)
+					return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for A mechanism in %s: %w", domain, err)
 				}
 			}
 
@@ -182,7 +182,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 					continue
 				}
 
-				return nil, fmt.Errorf("MX lookup failed for %s (directive in %s): %w", targetHost, domain, err)
+				return nil, fmt.Errorf("spf2ip: MX lookup failed for %s (directive in %s): %w", targetHost, domain, err)
 			}
 
 			for _, mx := range mxs {
@@ -201,7 +201,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 
 				for _, ip := range ips {
 					if err := r.addIPOrCIDRToSet(ip.String()+maskSuffix, currentDomainIPs); err != nil {
-						return nil, fmt.Errorf("failed to add IP/CIDR for MX mechanism in %s: %w", domain, err)
+						return nil, fmt.Errorf("spf2ip: failed to add IP/CIDR for MX mechanism in %s: %w", domain, err)
 					}
 				}
 			}
@@ -211,12 +211,12 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 				r.debugLogPrintf("Debug: 'include' modifier without domain in %s", domain)
 				r.resolvedIPsCache[domain] = nil
 
-				return nil, fmt.Errorf("include without domain in %s", domain)
+				return nil, fmt.Errorf("spf2ip: include without domain in %s", domain)
 			}
 
 			includedIPs, includeErr := r.processDomain(ctx, value, depth+1)
 			if includeErr != nil {
-				return nil, fmt.Errorf("include failed for %s (directive in %s): %w", value, domain, includeErr)
+				return nil, fmt.Errorf("spf2ip: include failed for %s (directive in %s): %w", value, domain, includeErr)
 			}
 
 			for ip := range includedIPs {
@@ -228,7 +228,7 @@ func (r *SPF2IPResolver) processDomain(ctx context.Context, domain string, depth
 				r.debugLogPrintf("Debug: 'redirect' modifier without domain in %s", domain)
 				r.resolvedIPsCache[domain] = nil
 
-				return nil, fmt.Errorf("redirect without domain in %s", domain)
+				return nil, fmt.Errorf("spf2ip: redirect without domain in %s", domain)
 			}
 
 			r.debugLogPrintf("Debug: Redirecting from %s to %s. Discarding IPs found so far for %s.", domain, value, domain)
@@ -290,8 +290,8 @@ func parseSPFMechanismTargetAndMask(defaultDomain, mechanismValue string) (targe
 }
 
 var (
-	errIgnorableDNSErr = errors.New("ignorable DNS error")
-	errDNSErr          = errors.New("DNS error")
+	errIgnorableDNSErr = errors.New("spf2ip: ignorable DNS error")
+	errDNSErr          = errors.New("spf2ip: DNS error")
 )
 
 func (r *SPF2IPResolver) getSPFRecord(ctx context.Context, domain string) (string, error) {
@@ -329,7 +329,7 @@ func (r *SPF2IPResolver) addIPOrCIDRToSet(value string, targetSet map[string]str
 			return nil
 		}
 
-		return fmt.Errorf("CIDR '%s' is not of the required IP version (v%d)", value, r.ipVersion)
+		return fmt.Errorf("spf2ip: CIDR '%s' is not of the required IP version (v%d)", value, r.ipVersion)
 	}
 
 	// Try plain IP
@@ -347,10 +347,10 @@ func (r *SPF2IPResolver) addIPOrCIDRToSet(value string, targetSet map[string]str
 			return nil
 		}
 
-		return fmt.Errorf("IP address '%s' is not of the required IP version (v%d)", value, r.ipVersion)
+		return fmt.Errorf("spf2ip: IP address '%s' is not of the required IP version (v%d)", value, r.ipVersion)
 	}
 
-	return fmt.Errorf("value '%s' is not a valid IP address or CIDR block", value)
+	return fmt.Errorf("spf2ip: value '%s' is not a valid IP address or CIDR block", value)
 }
 
 // debugLogPrintf logs debug messages if debug logging is enabled.
