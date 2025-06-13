@@ -17,7 +17,10 @@ This tool recursively processes SPF records, handling `include` and `redirect` m
 
 This project is a Go remake of the original [SPF2IP (Python) by Nathan Dines](https://github.com/nathandines/SPF2IP). Full credit and thanks to Nathan Dines for the original concept and implementation.
 
-## Installation (Building from Source)
+## Installation
+
+### Building from Source
+To build the `spf2ip-go` executable from source, follow these steps:
 
 1.  Clone the repository:
     ```bash
@@ -27,14 +30,21 @@ This project is a Go remake of the original [SPF2IP (Python) by Nathan Dines](ht
     
 2.  Build the executable:
     ```bash
-    go build -o spf2ip-go .
+    go build -o spf2ip-go ./cmd/spf2ip-go/main.go
     ```
     This will create an executable named `spf2ip-go` in the current directory.
+
+### Using Go Modules
+If you prefer to use Go modules, you can run the following command to install the package:
+
+```bash
+go install github.com/HENNGE/spf2ip-go/cmd/spf2ip-go@latest
+```
 
 ## CLI Usage
 
 ```bash
-./spf2ip-go --domain <domain_name> [--ip-version <4|6>] [--debug]
+spf2ip-go --domain <domain_name> [--ip-version <4|6>] [--debug]
 ```
 
 ### Flags

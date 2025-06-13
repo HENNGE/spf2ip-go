@@ -1,4 +1,4 @@
-module SPF2IP
+module github.com/HENNGE/spf2ip-go
 
 go 1.24.2
 

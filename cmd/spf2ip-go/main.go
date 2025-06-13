@@ -7,6 +7,8 @@ import (
 	"log"
 	net "net"
 	"os"
+
+	spf2ip "github.com/HENNGE/spf2ip-go"
 )
 
 func main() {
@@ -22,11 +24,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *ipVersion != ipv4 && *ipVersion != ipv6 {
+	if *ipVersion != 4 && *ipVersion != 6 {
 		log.Fatal("Error: --ip-version must be '4' or '6'")
 	}
 
-	resolver := NewSPF2IPResolver(net.DefaultResolver, *debugLogging)
+	resolver := spf2ip.NewSPF2IPResolver(net.DefaultResolver, *debugLogging)
 
 	ips, err := resolver.Resolve(context.Background(), *domain, *ipVersion)
 	if err != nil {

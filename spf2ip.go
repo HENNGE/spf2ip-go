@@ -1,4 +1,4 @@
-package main
+package spf2ip
 
 import (
 	"context"
@@ -35,7 +35,7 @@ type SPF2IPResolver struct {
 	resolvedIPsCache map[string]map[string]struct{}
 }
 
-//go:generate mockgen -package main -source spf2ip.go -destination netresolver_mock.go
+//go:generate mockgen -package spf2ip -source spf2ip.go -destination netresolver_mock.go
 type NetResolver interface {
 	LookupIP(ctx context.Context, network, host string) ([]net.IP, error)
 	LookupMX(ctx context.Context, domain string) ([]*net.MX, error)

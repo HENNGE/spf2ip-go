@@ -1,4 +1,4 @@
-package main
+package spf2ip
 
 import (
 	"bytes"
