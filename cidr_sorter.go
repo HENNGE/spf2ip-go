@@ -5,21 +5,19 @@ import (
 	"net"
 )
 
-type cidrSorter struct {
-	ips []string
-}
+type cidrSorter []string
 
-func (s cidrSorter) Len() int      { return len(s.ips) }
-func (s cidrSorter) Swap(i, j int) { s.ips[i], s.ips[j] = s.ips[j], s.ips[i] }
+func (s cidrSorter) Len() int      { return len(s) }
+func (s cidrSorter) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s cidrSorter) Less(i, j int) bool {
-	ip1, p1, isV4_1 := parseCIDR(s.ips[i])
-	ip2, p2, isV4_2 := parseCIDR(s.ips[j])
+	ip1, p1, isV4_1 := parseCIDR(s[i])
+	ip2, p2, isV4_2 := parseCIDR(s[j])
 
 	isValid1 := ip1 != nil
 	isValid2 := ip2 != nil
 
 	if !isValid1 && !isValid2 {
-		return s.ips[i] < s.ips[j]
+		return s[i] < s[j]
 	} // Both invalid, sort by string
 
 	if !isValid1 {

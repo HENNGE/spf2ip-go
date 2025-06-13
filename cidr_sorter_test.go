@@ -38,10 +38,13 @@ func TestCIDRSorter(t *testing.T) {
 		t.Run(description, func(t *testing.T) {
 			t.Parallel()
 
-			s := cidrSorter{ips: tc.cidrs}
-			sort.Sort(s)
+			// Create a copy of the CIDRs to avoid modifying the original slice.
+			cidrs := make([]string, len(tc.cidrs))
+			copy(cidrs, tc.cidrs)
 
-			assert.Equal(t, tc.expected, s.ips, "Sorted CIDRs should match expected order")
+			sort.Sort(cidrSorter(cidrs))
+
+			assert.Equal(t, tc.expected, cidrs, "Sorted CIDRs should match expected order")
 		})
 	}
 }

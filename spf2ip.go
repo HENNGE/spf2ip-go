@@ -72,7 +72,7 @@ func (r *SPF2IPResolver) Resolve(ctx context.Context, domain string, ipVersion i
 		result = append(result, ip)
 	}
 
-	sort.Sort(cidrSorter{result})
+	sort.Sort(cidrSorter(result))
 
 	return result, nil
 }
