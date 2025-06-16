@@ -35,7 +35,7 @@ func main() {
 		log.Fatalf("Error resolving SPF: %v", err)
 	}
 
-	fmt.Printf("Resolved %d IPs for domain %s:\n", len(ips), *domain)
+	log.Printf("Resolved %d IPs for domain %s:\n", len(ips), *domain)
 
 	for _, ip := range ips {
 		fmt.Println(ip)
