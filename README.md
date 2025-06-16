@@ -30,7 +30,7 @@ To build the `spf2ip-go` executable from source, follow these steps:
     
 2.  Build the executable:
     ```bash
-    go build -o spf2ip-go ./cmd/spf2ip-go/main.go
+    go build github.com/HENNGE/spf2ip-go/cmd/spf2ip-go
     ```
     This will create an executable named `spf2ip-go` in the current directory.
 
